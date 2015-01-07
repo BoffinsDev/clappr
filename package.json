@@ -2,7 +2,7 @@
   "name": "clappr",
   "version": "0.0.77",
   "description": "An extensible media player for the web",
-  "main": "dist/clappr.min.js",
+  "main": "dist/clappr.js",
   "scripts": {
     "test": "./node_modules/.bin/gulp release && ./node_modules/.bin/karma start --single-run --browsers Firefox"
   },
