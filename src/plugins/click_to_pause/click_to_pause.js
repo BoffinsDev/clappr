@@ -2,11 +2,16 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-var ContainerPlugin = require('container_plugin')
-var Events = require('events')
+import ContainerPlugin from 'base/container_plugin'
+import Events from 'base/events'
+import Playback from 'base/playback'
 
-class ClickToPausePlugin extends ContainerPlugin {
+export default class ClickToPausePlugin extends ContainerPlugin {
   get name() { return 'click_to_pause' }
+
+  constructor(container) {
+    super(container)
+  }
 
   bindEvents() {
     this.listenTo(this.container, Events.CONTAINER_CLICK, this.click)
@@ -14,7 +19,7 @@ class ClickToPausePlugin extends ContainerPlugin {
   }
 
   click() {
-    if (this.container.getPlaybackType() !== 'live' || this.container.isDvrEnabled()) {
+    if (this.container.getPlaybackType() !== Playback.LIVE || this.container.isDvrEnabled()) {
       if (this.container.isPlaying()) {
         this.container.pause()
       } else {
@@ -25,10 +30,8 @@ class ClickToPausePlugin extends ContainerPlugin {
 
   settingsUpdate() {
     this.container.$el.removeClass('pointer-enabled')
-    if (this.container.getPlaybackType() !== 'live' || this.container.isDvrEnabled()) {
+    if (this.container.getPlaybackType() !== Playback.LIVE || this.container.isDvrEnabled()) {
       this.container.$el.addClass('pointer-enabled')
     }
   }
 }
-
-module.exports = ClickToPausePlugin

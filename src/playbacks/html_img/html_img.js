@@ -2,12 +2,12 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-var Playback = require('playback')
-var Styler = require('../../base/styler')
-var JST = require('../../base/jst')
-var Events = require('events')
+import Playback from 'base/playback'
+import Styler from 'base/styler'
+import imgStyle from './public/style.scss'
+import Events from 'base/events'
 
-class HTMLImg extends Playback {
+export default class HTMLImg extends Playback {
   get name() { return 'html_img' }
   get tagName() { return 'img' }
   get attributes() {
@@ -16,27 +16,40 @@ class HTMLImg extends Playback {
     }
   }
 
+  get events() {
+    return {
+      'load': 'onLoad',
+      'abort': 'onError',
+      'error': 'onError'
+    }
+  }
+
   getPlaybackType() {
-    return null
+    return Playback.NO_OP
   }
 
   constructor(params) {
     super(params)
     this.el.src = params.src
-    setTimeout(function() {
-      this.trigger(Events.PLAYBACK_BUFFERFULL, this.name)
-    }.bind(this), 1);
   }
 
   render() {
-    var style = Styler.getStyleFor(this.name)
+    var style = Styler.getStyleFor(imgStyle)
     this.$el.append(style)
+    this.trigger(Events.PLAYBACK_READY, this.name)
     return this
   }
- }
 
-HTMLImg.canPlay = function(resource) {
-  return !!resource.match(/(.*).(png|jpg|jpeg|gif|bmp)/)
+  onLoad(evt) {
+    this.trigger(Events.PLAYBACK_ENDED, this.name)
+  }
+
+  onError(evt) {
+    var m = (evt.type === 'error') ? 'load error' : 'loading aborted';
+    this.trigger(Events.PLAYBACK_ERROR, {message: m}, this.name)
+  }
 }
 
-module.exports = HTMLImg
+HTMLImg.canPlay = function(resource) {
+  return /\.(png|jpg|jpeg|gif|bmp|tiff|pgm|pnm|webp)(|\?.*)$/i.test(resource)
+}

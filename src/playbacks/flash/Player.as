@@ -34,11 +34,10 @@ package
       playbackState = "IDLE";
       _video = new Video();
       setupCallbacks();
-      setTimeout(flashReady, 50);
+      setupStage();
     }
     private function flashReady(): void {
       _triggerEvent('flashready');
-      setupStage();
     }
     private function onConnectionStatus(e:NetStatusEvent):void {
       if (e.info.code == "NetConnection.Connect.Success"){
@@ -129,7 +128,6 @@ package
       source = url;
       setupNetConnection();
       heartbeat.addEventListener( TimerEvent.TIMER, onHeartbeat );
-      heartbeat.start();
     }
     private function playerPause():void {
       _ns.pause();
@@ -218,11 +216,13 @@ package
       } else {
         _disableStageVideo();
       }
+      flashReady();
     }
     public function onMetaData(info:Object):void {
       totalTime = info.duration;
       _triggerEvent('timeupdate');
       receivedMeta(info);
+      heartbeat.start();
     }
     public function receivedMeta(data:Object):void {
         setVideoSize(stage.stageWidth, stage.stageHeight);

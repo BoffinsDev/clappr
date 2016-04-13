@@ -2,62 +2,90 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-var Playback = require('playback')
-var Styler = require('../../base/styler')
-var JST = require('../../base/jst')
-var Mediator = require('mediator')
-var _ = require('underscore')
-var $ = require('zepto')
-var Browser = require('browser')
-var seekStringToSeconds = require('../../base/utils').seekStringToSeconds
-var Events = require('events')
+import {seekStringToSeconds} from 'base/utils'
 
-require('mousetrap')
+import BaseFlashPlayback from 'playbacks/base_flash_playback'
+import Browser from 'components/browser'
+import Mediator from 'components/mediator'
+import template from 'base/template'
+import $ from 'clappr-zepto'
+import Events from 'base/events'
+import Playback from 'base/playback'
+import flashSwf from './public/Player.swf'
 
-var objectIE = '<object type="application/x-shockwave-flash" id="<%= cid %>" classid="clsid:d27cdb6e-ae6d-11cf-96b8-444553540000" data-flash-vod=""><param name="movie" value="<%= swfPath %>"> <param name="quality" value="autohigh"> <param name="swliveconnect" value="true"> <param name="allowScriptAccess" value="always"> <param name="bgcolor" value="#001122"> <param name="allowFullScreen" value="false"> <param name="wmode" value="gpu"> <param name="tabindex" value="1"> <param name=FlashVars value="playbackId=<%= playbackId %>" /> </object>'
+var MAX_ATTEMPTS = 60
 
-class Flash extends Playback {
+export default class Flash extends BaseFlashPlayback {
   get name() { return 'flash' }
-  get tagName() { return 'object' }
-  get template() { return JST.flash }
+  get swfPath() { return template(flashSwf)({baseUrl: this.baseUrl}) }
+
+  /**
+   * Determine if the playback has ended.
+   * @property ended
+   * @type Boolean
+   */
+  get ended() {
+    return this.currentState === "ENDED"
+  }
+
+  /**
+   * Determine if the playback is buffering.
+   * This is related to the PLAYBACK_BUFFERING and PLAYBACK_BUFFERFULL events
+   * @property buffering
+   * @type Boolean
+   */
+  get buffering() {
+    return !!this.bufferingState && this.currentState !== "ENDED"
+  }
 
   constructor(options) {
     super(options)
     this.src = options.src
-    this.defaultBaseSwfPath = "http://cdn.clappr.io/" + Clappr.version + "/assets/"
-    this.swfPath = (options.swfBasePath || this.defaultBaseSwfPath) + "Player.swf"
+    this.baseUrl = options.baseUrl
     this.autoPlay = options.autoPlay
     this.settings = {default: ['seekbar']}
     this.settings.left = ["playpause", "position", "duration"]
     this.settings.right = ["fullscreen", "volume"]
     this.settings.seekEnabled = true
-    this.isReady = false
+    this.isReadyState = false
     this.addListeners()
   }
 
 
   bootstrap() {
-    this.el.width = "100%"
-    this.el.height = "100%"
-    this.isReady = true
-    if (this.currentState === 'PLAYING') {
-      this.firstPlay()
+    if (this.el.playerPlay) {
+      this.el.width = "100%"
+      this.el.height = "100%"
+      if (this.currentState === 'PLAYING') {
+        this.firstPlay()
+      } else {
+        this.currentState = "IDLE"
+        this.autoPlay && this.play()
+      }
+      $('<div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%" />').insertAfter(this.$el)
+      if (this.getDuration() > 0) {
+        this.metadataLoaded()
+      } else {
+        Mediator.once(this.uniqueId + ':timeupdate', this.metadataLoaded, this)
+      }
     } else {
-      this.currentState = "IDLE"
-      this.autoPlay && this.play()
+      this._attempts = this._attempts || 0
+      if (++this._attempts <= MAX_ATTEMPTS) {
+        setTimeout(() => this.bootstrap(), 50)
+      } else {
+        this.trigger(Events.PLAYBACK_ERROR, {message: "Max number of attempts reached"}, this.name)
+      }
     }
-    $('<div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%" />').insertAfter(this.$el)
+  }
+
+  metadataLoaded() {
+    this.isReadyState = true
     this.trigger(Events.PLAYBACK_READY, this.name)
+    this.trigger(Events.PLAYBACK_SETTINGSUPDATE, this.name)
   }
 
   getPlaybackType() {
-    return 'vod'
-  }
-
-  setupFirefox() {
-    var $el = this.$('embed')
-    $el.attr('data-flash', '')
-    this.setElement($el[0])
+    return Playback.VOD
   }
 
   isHighDefinitionInUse() {
@@ -65,7 +93,7 @@ class Flash extends Playback {
   }
 
   updateTime() {
-    this.trigger(Events.PLAYBACK_TIMEUPDATE, this.el.getPosition(), this.el.getDuration(), this.name)
+    this.trigger(Events.PLAYBACK_TIMEUPDATE, {current: this.el.getPosition(), total: this.el.getDuration()}, this.name)
   }
 
   addListeners() {
@@ -73,65 +101,74 @@ class Flash extends Playback {
     Mediator.on(this.uniqueId + ':timeupdate', this.updateTime, this)
     Mediator.on(this.uniqueId + ':statechanged', this.checkState, this)
     Mediator.on(this.uniqueId + ':flashready', this.bootstrap, this)
-    _.each(_.range(1,10), function (i) { Mousetrap.bind([i.toString()], () => this.seek(i * 10)) }.bind(this))
   }
 
   stopListening() {
-    super()
+    super.stopListening()
     Mediator.off(this.uniqueId + ':progress')
     Mediator.off(this.uniqueId + ':timeupdate')
     Mediator.off(this.uniqueId + ':statechanged')
     Mediator.off(this.uniqueId + ':flashready')
-    _.each(_.range(1,10), function (i) { Mousetrap.unbind([i.toString()], () => this.seek(i * 10)) }.bind(this))
   }
 
   checkState() {
-    if (this.currentState === "PAUSED") {
+    if (this.isIdle || this.currentState === "PAUSED") {
       return
     } else if (this.currentState !== "PLAYING_BUFFERING" && this.el.getState() === "PLAYING_BUFFERING") {
+      this.bufferingState = true
       this.trigger(Events.PLAYBACK_BUFFERING, this.name)
       this.currentState = "PLAYING_BUFFERING"
-    } else if (this.currentState === "PLAYING_BUFFERING" && this.el.getState() === "PLAYING") {
+    } else if (this.el.getState() === "PLAYING") {
+      this.bufferingState = false
       this.trigger(Events.PLAYBACK_BUFFERFULL, this.name)
       this.currentState = "PLAYING"
     } else if (this.el.getState() === "IDLE") {
       this.currentState = "IDLE"
     } else if (this.el.getState() === "ENDED") {
       this.trigger(Events.PLAYBACK_ENDED, this.name)
-      this.trigger(Events.PLAYBACK_TIMEUPDATE, 0, this.el.getDuration(), this.name)
+      this.trigger(Events.PLAYBACK_TIMEUPDATE, {current: 0, total: this.el.getDuration()}, this.name)
       this.currentState = "ENDED"
+      this.isIdle = true
     }
   }
 
   progress() {
     if (this.currentState !== "IDLE" && this.currentState !== "ENDED") {
-      this.trigger(Events.PLAYBACK_PROGRESS, 0, this.el.getBytesLoaded(), this.el.getBytesTotal(), this.name)
+      this.trigger(Events.PLAYBACK_PROGRESS,{
+        start: 0,
+        current: this.el.getBytesLoaded(),
+        total: this.el.getBytesTotal()
+      })
     }
   }
 
   firstPlay() {
-    this.currentState = "PLAYING"
     if (this.el.playerPlay) {
+      this.isIdle = false
       this.el.playerPlay(this.src)
       this.listenToOnce(this, Events.PLAYBACK_BUFFERFULL, () => this.checkInitialSeek())
+      this.currentState = "PLAYING"
     } else {
-      this.listenToOnce(this, EVENTS.PLAYBACK_READY, this.firstPlay)
+      this.listenToOnce(this, Events.PLAYBACK_READY, this.firstPlay)
     }
   }
 
   checkInitialSeek() {
     var seekTime = seekStringToSeconds(window.location.href)
-    this.seekSeconds(seekTime)
+    if (seekTime !== 0) {
+      this.seekSeconds(seekTime)
+    }
   }
 
   play() {
-    if (this.el.getState() === 'PAUSED' || this.el.getState() === 'PLAYING_BUFFERING') {
+    if (this.currentState === 'PAUSED' || this.currentState === 'PLAYING_BUFFERING') {
       this.currentState = "PLAYING"
       this.el.playerResume()
-    } else if (this.el.getState() !== 'PLAYING') {
+      this.trigger(Events.PLAYBACK_PLAY, this.name)
+    } else if (this.currentState !== 'PLAYING') {
       this.firstPlay()
+      this.trigger(Events.PLAYBACK_PLAY, this.name)
     }
-    this.trigger(Events.PLAYBACK_PLAY, this.name)
   }
 
   volume(value) {
@@ -145,63 +182,60 @@ class Flash extends Playback {
   pause() {
     this.currentState = "PAUSED"
     this.el.playerPause()
+    this.trigger(Events.PLAYBACK_PAUSE, this.name)
   }
 
   stop() {
     this.el.playerStop()
-    this.trigger(Events.PLAYBACK_TIMEUPDATE, 0, this.name)
+    this.trigger(Events.PLAYBACK_STOP)
+    this.trigger(Events.PLAYBACK_TIMEUPDATE, {current: 0, total: 0}, this.name)
   }
 
   isPlaying() {
-    return !!(this.isReady && this.currentState === "PLAYING")
+    return !!(this.isReady && this.currentState.indexOf("PLAYING") > -1)
+  }
+
+  get isReady(){
+    return this.isReadyState
   }
 
   getDuration() {
     return this.el.getDuration()
   }
 
-  seek(seekBarValue) {
-    var seekTo = this.el.getDuration() * (seekBarValue / 100)
-    this.seekSeconds(seekTo)
+  seekPercentage(percentage) {
+    if (this.el.getDuration() > 0) {
+      var seekSeconds = this.el.getDuration() * (percentage / 100)
+      this.seek(seekSeconds)
+    } else {
+      this.listenToOnce(this, Events.PLAYBACK_BUFFERFULL, () => this.seekPercentage(percentage))
+    }
   }
 
-  seekSeconds(seekTo) {
-    this.el.playerSeek(seekTo)
-    this.trigger(Events.PLAYBACK_TIMEUPDATE, seekTo, this.el.getDuration(), this.name)
-    if (this.currentState === "PAUSED") {
-      this.el.playerPause()
+  seek(time) {
+    if (this.isReady && this.el.playerSeek) {
+      this.el.playerSeek(time)
+      this.trigger(Events.PLAYBACK_TIMEUPDATE, {current: time, total: this.el.getDuration()}, this.name)
+      if (this.currentState === "PAUSED") {
+        this.el.playerPause()
+      }
+    } else {
+      this.listenToOnce(this, Events.PLAYBACK_BUFFERFULL, () => this.seek(time))
     }
   }
 
   destroy() {
     clearInterval(this.bootstrapId)
-    this.stopListening()
+    super.stopListening()
     this.$el.remove()
-  }
-
-  setupIE() {
-    this.setElement($(_.template(objectIE)({ cid: this.cid, swfPath: this.swfPath, playbackId: this.uniqueId })))
-  }
-
-  render() {
-    var style = Styler.getStyleFor(this.name)
-    this.$el.html(this.template({ cid: this.cid, swfPath: this.swfPath, playbackId: this.uniqueId }))
-    if(Browser.isFirefox) {
-      this.setupFirefox()
-    } else if(Browser.isLegacyIE) {
-      this.setupIE()
-    }
-    this.$el.append(style)
-    return this
   }
 }
 
 Flash.canPlay = function(resource) {
-  if ((!Browser.isMobile && Browser.isFirefox) || Browser.isLegacyIE) {
-    return _.isString(resource) && !!resource.match(/(.*)\.(mp4|mov|f4v|3gpp|3gp)/)
+  if (!Browser.hasFlash || !resource || resource.constructor !== String) {
+    return false
   } else {
-    return _.isString(resource) && !!resource.match(/(.*)\.(mov|f4v|3gpp|3gp)/)
+    var resourceParts = resource.split('?')[0].match(/.*\.(.*)$/) || []
+    return resourceParts.length > 1 && !Browser.isMobile && resourceParts[1].match(/^(mp4|mov|f4v|3gpp|3gp)$/)
   }
 }
-
-module.exports = Flash

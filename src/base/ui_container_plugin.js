@@ -2,19 +2,39 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-var UIObject = require('ui_object')
+import {extend} from './utils'
 
-class UIContainerPlugin extends UIObject {
-  constructor(options) {
-    super(options)
+import UIObject from './ui_object'
+
+/**
+ * The base class for an ui container plugin
+ * @class UIContainerPlugin
+ * @constructor
+ * @extends UIObject
+ * @module base
+ */
+export default class UIContainerPlugin extends UIObject {
+  constructor(container) {
+    super(container.options)
+    this.container = container
     this.enabled = true
     this.bindEvents()
   }
 
+  /**
+   * provides the read-only options to the ui container plugin
+   * @property options
+   * @type Object
+   * @default "`{}`"
+   */
+  get options() {return (this.container && this.container.options) || {}}
+
   enable() {
-    this.bindEvents()
-    this.$el.show()
-    this.enabled = true
+    if (!this.enabled) {
+      this.bindEvents()
+      this.$el.show()
+      this.enabled = true
+    }
   }
 
   disable() {
@@ -30,4 +50,8 @@ class UIContainerPlugin extends UIObject {
   }
 }
 
-module.exports = UIContainerPlugin
+UIContainerPlugin.extend = function(properties) {
+  return extend(UIContainerPlugin, properties)
+}
+
+UIContainerPlugin.type = 'container'

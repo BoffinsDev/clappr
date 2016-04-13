@@ -1,10 +1,14 @@
-var UICorePlugin = require('ui_core_plugin')
-var JST = require('../../base/jst')
-var Styler = require('../../base/styler')
-var Events = require('events')
+import UICorePlugin from 'base/ui_core_plugin'
+import template from 'base/template'
+import Playback from 'base/playback'
+import Styler from 'base/styler'
+import Events from 'base/events'
+import dvrStyle from './public/dvr_controls.scss'
+import dvrHTML from './public/index.html'
+import $ from 'clappr-zepto'
 
-class DVRControls extends UICorePlugin {
-  get template() { return JST.dvr_controls }
+export default class DVRControls extends UICorePlugin {
+  get template() { return template(dvrHTML) }
   get name() { return 'dvr_controls' }
   get events() {
     return {
@@ -25,8 +29,18 @@ class DVRControls extends UICorePlugin {
   }
 
   bindEvents() {
+    this.listenTo(this.core.mediaControl, Events.MEDIACONTROL_CONTAINERCHANGED, this.containerChanged)
     this.listenTo(this.core.mediaControl, Events.MEDIACONTROL_RENDERED, this.settingsUpdate)
-    this.listenTo(this.core.mediaControl.container, Events.CONTAINER_PLAYBACKDVRSTATECHANGED, this.dvrChanged)
+    this.listenTo(this.core, Events.CORE_OPTIONS_CHANGE, this.render)
+    if (this.core.getCurrentContainer()) {
+      this.listenToOnce(this.core.getCurrentContainer(), Events.CONTAINER_TIMEUPDATE, this.render)
+      this.listenTo(this.core.getCurrentContainer(), Events.CONTAINER_PLAYBACKDVRSTATECHANGED, this.dvrChanged)
+    }
+  }
+
+  containerChanged() {
+    this.stopListening()
+    this.bindEvents()
   }
 
   dvrChanged(dvrEnabled) {
@@ -41,11 +55,13 @@ class DVRControls extends UICorePlugin {
   }
 
   click() {
-    if (!this.core.mediaControl.container.isPlaying()) {
-      this.core.mediaControl.container.play()
+    var mediaControl = this.core.mediaControl
+    var container = mediaControl.container
+    if (!container.isPlaying()) {
+      container.play()
     }
-    if (this.core.mediaControl.$el.hasClass('dvr')) {
-      this.core.mediaControl.container.setCurrentTime(-1)
+    if (mediaControl.$el.hasClass('dvr')) {
+      container.seek(container.getDuration())
     }
   }
 
@@ -60,24 +76,17 @@ class DVRControls extends UICorePlugin {
 
   shouldRender() {
     var useDvrControls = this.core.options.useDvrControls === undefined || !!this.core.options.useDvrControls
-    return useDvrControls && this.core.mediaControl.container.getPlaybackType() === 'live'
+    return useDvrControls && this.core.getPlaybackType() === Playback.LIVE
   }
 
   render() {
-    var style = Styler.getStyleFor(this.name)
+    this.style = this.style || Styler.getStyleFor(dvrStyle, { baseUrl: this.core.options.baseUrl })
     this.$el.html(this.template())
-    this.$el.append(style)
+    this.$el.append(this.style)
     if (this.shouldRender()) {
       this.core.mediaControl.$el.addClass('live')
       this.core.mediaControl.$('.media-control-left-panel[data-media-control]').append(this.$el)
-      if (this.$duration) {
-        this.$duration.remove()
-      }
-      this.$duration = $('<span data-duration></span>')
-      this.core.mediaControl.seekTime.$el.append(this.$duration)
     }
     return this
   }
 }
-
-module.exports = DVRControls

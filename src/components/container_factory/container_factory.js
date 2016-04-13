@@ -6,13 +6,14 @@
  * The ContainerFactory is responsible for manage playback bootstrap and create containers.
  */
 
-var _ = require('underscore');
-var BaseObject = require('base_object');
-var Container = require('container');
-var $ = require('zepto');
-var Events = require('events');
+import BaseObject from 'base/base_object'
+import Events from 'base/events'
+import Container from 'components/container'
+import $ from 'clappr-zepto'
 
-class ContainerFactory extends BaseObject {
+import find from 'lodash.find'
+
+export default class ContainerFactory extends BaseObject {
   constructor(options, loader) {
     super(options);
     this.options = options;
@@ -21,34 +22,51 @@ class ContainerFactory extends BaseObject {
 
   createContainers() {
     return $.Deferred((promise) => {
-      promise.resolve( _.map(this.options.sources, (source) => {
+      promise.resolve(this.options.sources.map((source) => {
         return this.createContainer(source);
-      }, this));
+      }));
     });
   }
 
-  findPlaybackPlugin(source) {
-    return _.find(this.loader.playbackPlugins, (p) => { return p.canPlay(source.toString()) }, this);
+  findPlaybackPlugin(source, mimeType) {
+    return find(this.loader.playbackPlugins, (p) => { return p.canPlay(source, mimeType) })
   }
 
   createContainer(source) {
-    var playbackPlugin = this.findPlaybackPlugin(source)
-    var options = _.extend({}, this.options, {src: source, autoPlay: !!this.options.autoPlay})
+    var resolvedSource = null
+    var mimeType = this.options.mimeType
+    if (typeof source === "string" || source instanceof String) {
+      resolvedSource = source.toString()
+    }
+    else {
+      resolvedSource = source.source.toString()
+      if (source.mimeType) {
+        mimeType = source.mimeType
+      }
+    }
+    
+    if (!!resolvedSource.match(/^\/\//)) resolvedSource = window.location.protocol + resolvedSource
+
+    var options = $.extend({}, this.options, {
+      src: resolvedSource,
+      mimeType: mimeType
+    })
+    var playbackPlugin = this.findPlaybackPlugin(resolvedSource, mimeType)
     var playback = new playbackPlugin(options)
-    var container = new Container({playback: playback})
+
+    options = $.extend(options, {playback: playback})
+
+    var container = new Container(options)
     var defer = $.Deferred()
     defer.promise(container)
-    this.addContainerPlugins(container, source)
+    this.addContainerPlugins(container, resolvedSource)
     this.listenToOnce(container, Events.CONTAINER_READY, () => defer.resolve(container))
     return container
   }
 
   addContainerPlugins(container, source) {
-    _.each(this.loader.containerPlugins, function(Plugin) {
-      var options = _.extend(this.options, {container: container, src: source});
-      container.addPlugin(new Plugin(options));
-    }, this);
+    this.loader.containerPlugins.forEach((Plugin) => {
+      container.addPlugin(new Plugin(container))
+    });
   }
 }
-
-module.exports = ContainerFactory;

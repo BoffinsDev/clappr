@@ -2,53 +2,108 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-var BaseObject = require('base_object');
-var _ = require('underscore');
-var PlayerInfo = require('player_info')
+import BaseObject from 'base/base_object'
+import PlayerInfo from 'components/player_info'
+import uniqBy from 'lodash.uniqby'
 
 /* Playback Plugins */
-var HTML5VideoPlayback = require('html5_video');
-var FlashVideoPlayback = require('flash');
-var HTML5AudioPlayback = require('html5_audio');
-var HLSVideoPlayback = require('hls');
-var HTMLImgPlayback = require('html_img');
-var NoOp = require('../../playbacks/no_op');
+import HTML5VideoPlayback from 'playbacks/html5_video'
+import FlashVideoPlayback from 'playbacks/flash'
+import HTML5AudioPlayback from 'playbacks/html5_audio'
+import FlasHLSVideoPlayback from 'playbacks/flashls'
+import HLSVideoPlayback from 'playbacks/hls'
+import HTMLImgPlayback from 'playbacks/html_img'
+import NoOp from 'playbacks/no_op'
 
 /* Container Plugins */
-var SpinnerThreeBouncePlugin = require('../../plugins/spinner_three_bounce');
-var StatsPlugin = require('../../plugins/stats');
-var WaterMarkPlugin = require('../../plugins/watermark');
-var PosterPlugin = require('poster');
-var GoogleAnalyticsPlugin = require('../../plugins/google_analytics');
-var ClickToPausePlugin = require('../../plugins/click_to_pause');
+import SpinnerThreeBouncePlugin from 'plugins/spinner_three_bounce'
+import StatsPlugin from 'plugins/stats'
+import WaterMarkPlugin from 'plugins/watermark'
+import PosterPlugin from 'plugins/poster'
+import GoogleAnalyticsPlugin from 'plugins/google_analytics'
+import ClickToPausePlugin from 'plugins/click_to_pause'
 
 /* Core Plugins */
-var BackgroundButton = require('../../plugins/background_button');
-var DVRControls = require('../../plugins/dvr_controls');
+import DVRControls from 'plugins/dvr_controls'
+import Favicon from 'plugins/favicon'
+import SeekTime from 'plugins/seek_time'
+import SourcesPlugin from 'plugins/sources'
+import EndVideo from 'plugins/end_video'
 
-class Loader extends BaseObject {
-  constructor(externalPlugins) {
+/**
+ * It keeps a list of the default plugins (playback, container, core) and it merges external plugins with its internals.
+ * @class Loader
+ * @constructor
+ * @extends BaseObject
+ * @module components
+ */
+export default class Loader extends BaseObject {
+  /**
+   * builds the loader
+   * @method constructor
+   * @param {Object} externalPlugins the external plugins
+   * @param {Number} playerId you can embed multiple instances of clappr, therefore this is the unique id of each one.
+   */
+  constructor(externalPlugins, playerId) {
     super()
-    this.playbackPlugins = [FlashVideoPlayback, HTML5VideoPlayback, HTML5AudioPlayback, HLSVideoPlayback, HTMLImgPlayback, NoOp]
+    this.playerId = playerId
+    this.playbackPlugins = [HLSVideoPlayback, HTML5VideoPlayback, HTML5AudioPlayback, FlashVideoPlayback, FlasHLSVideoPlayback, HTMLImgPlayback, NoOp]
     this.containerPlugins = [SpinnerThreeBouncePlugin, WaterMarkPlugin, PosterPlugin, StatsPlugin, GoogleAnalyticsPlugin, ClickToPausePlugin]
-    this.corePlugins = [BackgroundButton, DVRControls]
+    this.corePlugins = [DVRControls, Favicon, SeekTime, SourcesPlugin, EndVideo]
     if (externalPlugins) {
+      if (!Array.isArray(externalPlugins)) {
+        this.validateExternalPluginsType(externalPlugins)
+      }
       this.addExternalPlugins(externalPlugins)
     }
   }
 
-  addExternalPlugins(plugins) {
-    var pluginName = function(plugin) { return plugin.prototype.name }
-    if (plugins.playback) { this.playbackPlugins = _.uniq(plugins.playback.concat(this.playbackPlugins), pluginName) }
-    if (plugins.container) { this.containerPlugins = _.uniq(plugins.container.concat(this.containerPlugins), pluginName) }
-    if (plugins.core) { this.corePlugins = _.uniq(plugins.core.concat(this.corePlugins), pluginName) }
-    PlayerInfo.playbackPlugins = this.playbackPlugins
+  /**
+   * groups by type the external plugins that were passed through `options.plugins` it they're on a flat array
+   * @method addExternalPlugins
+   * @private
+   * @param {Object} an config object or an array of plugins
+   * @return {Object} plugins the config object with the plugins separated by type
+   */
+  groupPluginsByType(plugins) {
+    if (Array.isArray(plugins)) {
+      plugins = plugins.reduce(function(memo, plugin) {
+        memo[plugin.type] || (memo[plugin.type] = [])
+        memo[plugin.type].push(plugin)
+        return memo
+      }, {})
+    }
+    return plugins
   }
 
-  getPlugin(name) {
-    var allPlugins = _.union(this.containerPlugins, this.playbackPlugins, this.corePlugins)
-    return _.find(allPlugins, function(plugin) { return plugin.prototype.name === name })
+  /**
+   * adds all the external plugins that were passed through `options.plugins`
+   * @method addExternalPlugins
+   * @private
+   * @param {Object} plugins the config object with all plugins
+   */
+  addExternalPlugins(plugins) {
+    plugins = this.groupPluginsByType(plugins)
+    var pluginName = function(plugin) { return plugin.prototype.name }
+    if (plugins.playback) { this.playbackPlugins = uniqBy(plugins.playback.concat(this.playbackPlugins), pluginName) }
+    if (plugins.container) { this.containerPlugins = uniqBy(plugins.container.concat(this.containerPlugins), pluginName) }
+    if (plugins.core) { this.corePlugins = uniqBy(plugins.core.concat(this.corePlugins), pluginName) }
+    PlayerInfo.getInstance(this.playerId).playbackPlugins = this.playbackPlugins
+  }
+
+  /**
+   * validate if the external plugins that were passed through `options.plugins` are associated to the correct type
+   * @method validateExternalPluginsType
+   * @private
+   * @param {Object} plugins the config object with all plugins
+   */
+  validateExternalPluginsType(plugins) {
+    var plugintypes = ["playback", "container", "core"]
+    plugintypes.forEach((type) => {
+      (plugins[type] || []).forEach((el) => {
+        var errorMessage = "external " + el.type + " plugin on " + type + " array"
+        if (el.type !== type) { throw new ReferenceError(errorMessage) }
+      })
+    })
   }
 }
-
-module.exports = Loader;

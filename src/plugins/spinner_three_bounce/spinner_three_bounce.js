@@ -2,12 +2,14 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-var UIContainerPlugin = require('ui_container_plugin');
-var Styler = require('../../base/styler');
-var JST = require('../../base/jst');
-var Events = require('events');
+import UIContainerPlugin from 'base/ui_container_plugin'
+import Events from 'base/events'
+import Styler from 'base/styler'
+import template from 'base/template'
+import spinnerHTML from './public/spinner.html'
+import spinnerStyle from './public/spinner.scss'
 
-class SpinnerThreeBouncePlugin extends UIContainerPlugin {
+export default class SpinnerThreeBouncePlugin extends UIContainerPlugin {
   get name() { return 'spinner' }
   get attributes() {
     return {
@@ -16,35 +18,53 @@ class SpinnerThreeBouncePlugin extends UIContainerPlugin {
     }
   }
 
-  constructor(options) {
-    super(options)
-    this.template = JST.spinner_three_bounce
+  constructor(container) {
+    super(container)
+    this.template = template(spinnerHTML);
+    this.showTimeout = null
     this.listenTo(this.container, Events.CONTAINER_STATE_BUFFERING, this.onBuffering)
     this.listenTo(this.container, Events.CONTAINER_STATE_BUFFERFULL, this.onBufferFull)
     this.listenTo(this.container, Events.CONTAINER_STOP, this.onStop)
+    this.listenTo(this.container, Events.CONTAINER_ENDED, this.onStop)
+    this.listenTo(this.container, Events.CONTAINER_ERROR, this.onStop)
     this.render()
   }
 
   onBuffering() {
-    this.$el.show()
+    this.show()
   }
 
   onBufferFull() {
-    this.$el.hide()
+    this.hide()
   }
 
   onStop() {
+    this.hide()
+  }
+
+  show() {
+    if (this.showTimeout === null) {
+      this.showTimeout = setTimeout(() => this.$el.show(), 300)
+    }
+  }
+
+  hide() {
+    if (this.showTimeout !== null) {
+      clearTimeout(this.showTimeout)
+      this.showTimeout = null
+    }
     this.$el.hide()
   }
 
   render() {
     this.$el.html(this.template())
-    var style = Styler.getStyleFor('spinner_three_bounce')
+    var style = Styler.getStyleFor(spinnerStyle);
     this.container.$el.append(style)
     this.container.$el.append(this.$el)
     this.$el.hide()
+    if (this.container.buffering) {
+      this.onBuffering()
+    }
     return this
   }
 }
-
-module.exports = SpinnerThreeBouncePlugin;

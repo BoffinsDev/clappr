@@ -2,15 +2,13 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-var $ = require('zepto');
-var _ = require('underscore');
-var JST = require('./jst');
+import $ from 'clappr-zepto'
+import template from './template'
 
 var Styler = {
-  getStyleFor: function(name, options) {
-    options = options || {};
-    return $('<style class="clappr-style"></style>').html(_.template(JST.CSS[name])(options))[0];
+  getStyleFor: function(style, options={baseUrl: ''}) {
+    return $('<style class="clappr-style"></style>').html(template(style.toString())(options));
   }
 };
 
-module.exports = Styler;
+export default Styler;

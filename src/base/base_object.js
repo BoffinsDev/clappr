@@ -2,20 +2,29 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-var _ = require('underscore')
-var extend = require('./utils').extend
-var Events = require('events')
+import {uniqueId} from './utils'
+import Events from './events'
 
-var pluginOptions = ['container']
-
-class BaseObject extends Events {
-  constructor(options) {
-    this.uniqueId = _.uniqueId('o')
-    options || (options = {})
-    _.extend(this, _.pick(options, pluginOptions))
+/**
+ * @class BaseObject
+ * @constructor
+ * @extends Events
+ * @module base
+ */
+export default class BaseObject extends Events {
+  /**
+   * @method constructor
+   * @param {Object} options
+   */
+  constructor(options={}) {
+    super(options)
+    this.uniqueId = uniqueId('o')
   }
+  /**
+  * a unique id prefixed with `'o'`, `o1, o232`
+  *
+  * @property uniqueId
+  * @type String
+  */
 }
 
-BaseObject.extend = extend
-
-module.exports = BaseObject

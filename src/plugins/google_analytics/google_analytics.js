@@ -2,18 +2,19 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-var ContainerPlugin = require('container_plugin');
-var Events = require('events')
+import ContainerPlugin from 'base/container_plugin';
+import Events from 'base/events'
 
-class GoogleAnalytics extends ContainerPlugin {
+export default class GoogleAnalytics extends ContainerPlugin {
   get name() { return 'google_analytics' }
-  constructor(options) {
-    super(options)
-    if (options.gaAccount) {
-      this.embedScript()
-      this.account = options.gaAccount
-      this.trackerName = options.gaTrackerName + "." || 'Clappr.'
+  constructor(container) {
+    super(container)
+    if (this.container.options.gaAccount) {
+      this.account = this.container.options.gaAccount
+      this.trackerName = (this.container.options.gaTrackerName) ? this.container.options.gaTrackerName + "." : 'Clappr.'
+      this.domainName = this.container.options.gaDomainName
       this.currentHDState = undefined
+      this.embedScript()
     }
   }
 
@@ -22,7 +23,7 @@ class GoogleAnalytics extends ContainerPlugin {
       var script = document.createElement('script')
       script.setAttribute("type", "text/javascript")
       script.setAttribute("async", "async")
-      script.setAttribute("src", "http://www.google-analytics.com/ga.js")
+      script.setAttribute("src", "//www.google-analytics.com/ga.js")
       script.onload = () => this.addEventListeners()
       document.body.appendChild(script)
     } else {
@@ -31,21 +32,30 @@ class GoogleAnalytics extends ContainerPlugin {
   }
 
   addEventListeners() {
-    this.listenTo(this.container, Events.CONTAINER_PLAY, this.onPlay)
-    this.listenTo(this.container, Events.CONTAINER_STOP, this.onStop)
-    this.listenTo(this.container, Events.CONTAINER_PAUSE, this.onPause)
-    this.listenTo(this.container, Events.CONTAINER_ENDED, this.onEnded)
-    this.listenTo(this.container, Events.CONTAINER_STATE_BUFFERING, this.onBuffering)
-    this.listenTo(this.container, Events.CONTAINER_STATE_BUFFERFULL, this.onBufferFull)
-    this.listenTo(this.container, Events.CONTAINER_ENDED, this.onEnded)
-    this.listenTo(this.container, Events.CONTAINER_ERROR, this.onError)
-    this.listenTo(this.container, Events.CONTAINER_PLAYBACKSTATE, this.onPlaybackChanged)
-    this.listenTo(this.container, Events.CONTAINER_VOLUME, (event) => this.onVolumeChanged(event))
-    this.listenTo(this.container, Events.CONTAINER_SEEK, (event) => this.onSeek(event))
-    this.listenTo(this.container, Events.CONTAINER_FULL_SCREEN, this.onFullscreen)
-    this.listenTo(this.container, Events.CONTAINER_HIGHDEFINITIONUPDATE, this.onHD)
-    this.listenTo(this.container.playback, Events.PLAYBACK_DVR, this.onDVR)
+    if (this.container) {
+      this.listenTo(this.container, Events.CONTAINER_READY, this.onReady)
+      this.listenTo(this.container, Events.CONTAINER_PLAY, this.onPlay)
+      this.listenTo(this.container, Events.CONTAINER_STOP, this.onStop)
+      this.listenTo(this.container, Events.CONTAINER_PAUSE, this.onPause)
+      this.listenTo(this.container, Events.CONTAINER_ENDED, this.onEnded)
+      this.listenTo(this.container, Events.CONTAINER_STATE_BUFFERING, this.onBuffering)
+      this.listenTo(this.container, Events.CONTAINER_STATE_BUFFERFULL, this.onBufferFull)
+      this.listenTo(this.container, Events.CONTAINER_ENDED, this.onEnded)
+      this.listenTo(this.container, Events.CONTAINER_ERROR, this.onError)
+      this.listenTo(this.container, Events.CONTAINER_PLAYBACKSTATE, this.onPlaybackChanged)
+      this.listenTo(this.container, Events.CONTAINER_VOLUME, (event) => this.onVolumeChanged(event))
+      this.listenTo(this.container, Events.CONTAINER_SEEK, (event) => this.onSeek(event))
+      this.listenTo(this.container, Events.CONTAINER_FULL_SCREEN, this.onFullscreen)
+      this.listenTo(this.container, Events.CONTAINER_HIGHDEFINITIONUPDATE, this.onHD)
+      this.listenTo(this.container, Events.CONTAINER_PLAYBACKDVRSTATECHANGED, this.onDVR)
+    }
     _gaq.push([this.trackerName + '_setAccount', this.account]);
+    if (!!this.domainName)
+      _gaq.push([this.trackerName + '_setDomainName', this.domainName]);
+  }
+  
+  onReady(){
+    this.push(["Video", "Playback", this.container.playback.name])
   }
 
   onPlay() {
@@ -72,24 +82,22 @@ class GoogleAnalytics extends ContainerPlugin {
     this.push(["Video", "Error", this.container.playback.src])
   }
 
-  onHD() {
-    var status = this.container.isHighDefinitionInUse()? "ON": "OFF"
+  onHD(isHD) {
+    var status = isHD ? "ON": "OFF"
     if (status !== this.currentHDState) {
       this.currentHDState = status
       this.push(["Video", "HD - " + status, this.container.playback.src])
     }
   }
 
-
-  onPlaybackChanged() {
-    var type = this.container.getPlaybackType()
-    if (type !== null) {
-      this.push(["Video", "Playback Type - " + type, this.container.playback.src])
+  onPlaybackChanged(playbackState) {
+    if (playbackState.type !== null) {
+      this.push(["Video", "Playback Type - " + playbackState.type, this.container.playback.src])
     }
   }
 
-  onDVR() {
-    var status = this.container.isHighDefinitionInUse()
+  onDVR(dvrInUse) {
+    var status = dvrInUse? "ON": "OFF"
     this.push(["Interaction", "DVR - " + status, this.container.playback.src])
   }
 
@@ -116,5 +124,3 @@ class GoogleAnalytics extends ContainerPlugin {
   }
 
 }
-
-module.exports = GoogleAnalytics;

@@ -2,29 +2,38 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-var UIContainerPlugin = require('ui_container_plugin')
-var Styler = require('../../base/styler')
-var JST = require('../../base/jst')
-var Events = require('events')
+import UIContainerPlugin from 'base/ui_container_plugin'
+import Events from 'base/events'
+import Styler from 'base/styler'
+import template from 'base/template'
+import watermarkStyle from './public/watermark.scss'
+import watermarkHTML from './public/watermark.html'
 
-class WaterMarkPlugin extends UIContainerPlugin {
+export default class WaterMarkPlugin extends UIContainerPlugin {
   get name() { return 'watermark' }
 
-  constructor(options) {
-    super(options)
-    this.template = JST[this.name]
-    this.position = options.position || "bottom-right"
-    if (options.watermark) {
-      this.imageUrl = options.watermark
-      this.render()
-    } else {
-      this.$el.remove()
-    }
+  get template() { return template(watermarkHTML) }
+
+  constructor(container) {
+    super(container)
+    this.configure()
   }
 
   bindEvents() {
     this.listenTo(this.container, Events.CONTAINER_PLAY, this.onPlay)
     this.listenTo(this.container, Events.CONTAINER_STOP, this.onStop)
+    this.listenTo(this.container, Events.CONTAINER_OPTIONS_CHANGE, this.configure)
+  }
+
+  configure() {
+    this.position = this.options.position || "bottom-right"
+    if (this.options.watermark) {
+      this.imageUrl = this.options.watermark
+      this.imageLink = this.options.watermarkLink
+      this.render()
+    } else {
+      this.$el.remove()
+    }
   }
 
   onPlay() {
@@ -38,13 +47,11 @@ class WaterMarkPlugin extends UIContainerPlugin {
 
   render() {
     this.$el.hide()
-    var templateOptions = {position: this.position, imageUrl: this.imageUrl}
+    var templateOptions = {position: this.position, imageUrl: this.imageUrl, imageLink: this.imageLink}
     this.$el.html(this.template(templateOptions))
-    var style = Styler.getStyleFor(this.name)
+    var style = Styler.getStyleFor(watermarkStyle)
     this.container.$el.append(style)
     this.container.$el.append(this.$el)
     return this
   }
 }
-
-module.exports = WaterMarkPlugin

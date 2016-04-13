@@ -6,6 +6,15 @@ var dotenv = require('dotenv');
 
 dotenv.load();
 
+var webpackConfig = require("./webpack-base-config");
+
+// add subject as webpack's postloader
+webpackConfig.module.postLoaders = [{
+    test: /\.js$/,
+    exclude: /(test|node_modules|bower_components)\//,
+    loader: 'istanbul-instrumenter'
+}];
+
 module.exports = function(config) {
   config.set({
 
@@ -14,12 +23,11 @@ module.exports = function(config) {
 
     // frameworks to use
     // available frameworks: https://npmjs.org/browse/keyword/karma-adapter
-    frameworks: ['browserify', 'mocha', 'sinon-chai'],
+    frameworks: ['mocha', 'chai-sinon'],
 
     // list of files / patterns to load in the browser
     files: [
-      'dist/clappr.min.js',
-      'test/**/*spec.js',
+      'test/**/*.js',
     ],
 
     // list of files to exclude
@@ -29,44 +37,32 @@ module.exports = function(config) {
     // preprocess matching files before serving them to the browser
     // available preprocessors: https://npmjs.org/browse/keyword/karma-preprocessor
     preprocessors: {
-      'test/**/*.js': ['browserify'],
+      'test/**/*.js': ['webpack'],
     },
 
-    browserify: {
-      watch: true,
-      debug: true,
-      transform: ['es6ify'],
-      prebundle: function(bundle) {
-        bundle.external('events');
-        bundle.external('ui_object');
-        bundle.external('base_object');
-        bundle.external('ui_container_plugin');
-        bundle.external('container_plugin');
-        bundle.external('core_plugin');
-        bundle.external('ui_core_plugin');
-        bundle.external('playback');
-        bundle.external('browser');
-        bundle.external('media_control');
-        bundle.external('player_info');
-        bundle.external('mediator');
-        bundle.external('container');
-        bundle.external('core');
-        bundle.external('flash');
-        bundle.external('hls');
-        bundle.external('html5_audio');
-        bundle.external('html5_video');
-        bundle.external('html_img');
-        bundle.external('poster');
-        bundle.external('underscore');
 
-      }
+    coverageReporter: {
+      reporters: [
+        {type: 'lcovonly'},
+        {type: 'text-summary'}
+      ],
+      dir: 'coverage'
     },
+    plugins: [
+        require('karma-webpack'),
+        require('karma-mocha'),
+        'karma-chrome-launcher',
+        'karma-firefox-launcher',
+        'karma-chai-sinon',
+        'karma-coverage',
+    ],
 
     // test results reporter to use
     // possible values: 'dots', 'progress'
     // available reporters: https://npmjs.org/browse/keyword/karma-reporter
-    reporters: ['progress'],
+    reporters: ['progress', 'coverage'],
 
+    webpack: webpackConfig,
 
     // web server port
     port: 9876,
@@ -88,7 +84,19 @@ module.exports = function(config) {
     // start these browsers
     // available browser launchers: https://npmjs.org/browse/keyword/karma-launcher
     //browsers: ['Chrome', 'Firefox', 'Safari'],
-    browsers: ['Chrome'],
+    browsers: [!process.env.TRAVIS ? 'Chrome' : 'Chrome_travis_ci', 'Firefox'],
+
+    customLaunchers: {
+      Chrome_travis_ci: {
+        base: 'Chrome',
+        flags: ['--no-sandbox']
+      }
+    },
+
+    // to avoid DISCONNECTED messages
+    browserDisconnectTimeout : 10000, // default 2000
+    browserDisconnectTolerance : 1, // default 0
+    browserNoActivityTimeout : 600000, //default 10000
 
 
     // Continuous Integration mode

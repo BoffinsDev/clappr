@@ -2,17 +2,17 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-var ContainerPlugin = require('container_plugin');
-var $ = require("zepto");
-var Events = require('events');
+import ContainerPlugin from 'base/container_plugin'
+import Events from 'base/events'
+import $ from "clappr-zepto"
 
-class StatsPlugin extends ContainerPlugin {
+export default class StatsPlugin extends ContainerPlugin {
   get name() { return 'stats' }
 
-  constructor(options) {
-    super(options)
+  constructor(container) {
+    super(container)
     this.setInitialAttrs()
-    this.reportInterval = options.reportInterval || 5000
+    this.reportInterval = this.options.reportInterval || 5000
     this.state = "IDLE"
   }
 
@@ -104,5 +104,3 @@ class StatsPlugin extends ContainerPlugin {
     this.container.statsReport(this.getStats())
   }
 }
-
-module.exports = StatsPlugin;

@@ -2,20 +2,21 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-var UIContainerPlugin = require('ui_container_plugin')
-var Styler = require('../../base/styler')
-var JST = require('../../base/jst')
-var Events = require('events')
+import UIContainerPlugin from 'base/ui_container_plugin'
+import Events from 'base/events'
+import Styler from 'base/styler'
+import template from 'base/template'
+import Mediator from 'components/mediator'
+import posterStyle from './public/poster.scss'
+import posterHTML from './public/poster.html'
+import playIcon from 'icons/01-play.svg'
 
-var Mediator = require('mediator')
-var PlayerInfo = require('player_info')
+import $ from 'clappr-zepto'
 
-var $ = require('zepto')
-var _ = require('underscore')
-
-class PosterPlugin extends UIContainerPlugin {
+export default class PosterPlugin extends UIContainerPlugin {
   get name() { return 'poster' }
-  get template() { return JST.poster }
+  get template() { return template(posterHTML) }
+  get shouldRender() { return this.container.playback.name !== 'html_img'}
 
   get attributes() {
     return {
@@ -30,97 +31,106 @@ class PosterPlugin extends UIContainerPlugin {
     }
   }
 
-  constructor(options) {
-    super(options)
-    this.options = options;
-    _.defaults(this.options, {disableControlsOnPoster: true});
-    if (this.options.disableControlsOnPoster) {
-      this.container.disableMediaControl()
-    }
+  constructor(container) {
+    super(container)
+    this.hasStartedPlaying = false
+    this.playRequested = false
     this.render()
+    process.nextTick(() => this.update())
   }
 
   bindEvents() {
-    this.listenTo(this.container, Events.CONTAINER_STATE_BUFFERING, this.onBuffering)
-    this.listenTo(this.container, Events.CONTAINER_STATE_BUFFERFULL, this.onBufferfull)
     this.listenTo(this.container, Events.CONTAINER_STOP, this.onStop)
+    this.listenTo(this.container, Events.CONTAINER_PLAY, this.onPlay)
     this.listenTo(this.container, Events.CONTAINER_ENDED, this.onStop)
-    Mediator.on(Events.PLAYER_RESIZE, this.updateSize, this)
+    this.listenTo(this.container, Events.CONTAINER_STATE_BUFFERING, this.update)
+    this.listenTo(this.container, Events.CONTAINER_STATE_BUFFERFULL, this.update)
+    this.listenTo(this.container, Events.CONTAINER_OPTIONS_CHANGE, this.render)
   }
 
   stopListening() {
-    super()
-    Mediator.off(Events.PLAYER_RESIZE, this.updateSize, this)
+    super.stopListening()
   }
 
-  onBuffering() {
-    this.hidePlayButton()
-  }
-
-  onBufferfull() {
-    this.$el.hide()
-    if (this.options.disableControlsOnPoster) {
-      this.container.enableMediaControl()
-    }
+  onPlay() {
+    this.hasStartedPlaying = true
+    this.update()
   }
 
   onStop() {
-    this.$el.show()
-    if (this.options.disableControlsOnPoster) {
-      this.container.disableMediaControl()
-    }
-    if (!this.options.hidePlayButton) {
-      this.showPlayButton()
-    }
+    this.hasStartedPlaying = false
+    this.playRequested = false
+    this.update()
   }
 
-  hidePlayButton() {
-    this.$playButton.hide()
-  }
-
-  showPlayButton() {
-    this.$playButton.show()
-    this.updateSize()
+  showPlayButton(show) {
+    if (show && (!this.options.chromeless || this.options.allowUserInteraction)) {
+      this.$playButton.show()
+      this.$el.addClass("clickable")
+    } else {
+      this.$playButton.hide()
+      this.$el.removeClass("clickable")
+    }
   }
 
   clicked() {
-    this.container.play()
+    if (!this.options.chromeless || this.options.allowUserInteraction) {
+      this.playRequested = true
+      this.update()
+      this.container.play()
+    }
     return false
   }
 
-  updateSize() {
-    if (!this.$el) return
-    var height = PlayerInfo.currentSize ? PlayerInfo.currentSize.height : this.$el.height()
-    this.$el.css({ fontSize: height })
-    if (this.$playWrapper.is(':visible')) {
-      this.$playWrapper.css({ marginTop: -(this.$playWrapper.height() / 2) })
-      if (!this.options.hidePlayButton) {
-        this.$playButton.show()
-      }
-    } else {
-      this.$playButton.hide()
-    }
+  shouldHideOnPlay() {
+    // Audio broadcasts should keep the poster up; video should hide poster while playing.
+    return !((this.container.playback.name == 'html5_audio') || this.options.audioOnly);
+  }
 
+  update() {
+    if (!this.shouldRender) {
+      return
+    }
+    if (!this.hasStartedPlaying) {
+      this.container.disableMediaControl()
+      this.$el.show()
+      let showPlayButton = !this.playRequested && !this.container.buffering
+      this.showPlayButton(showPlayButton)
+    } else {
+      this.container.enableMediaControl()
+      if (this.shouldHideOnPlay()) {
+        this.$el.hide()
+      }
+    }
   }
 
   render() {
-    var style = Styler.getStyleFor(this.name)
+    if (!this.shouldRender) {
+      return
+    }
+    var style = Styler.getStyleFor(posterStyle, {baseUrl: this.options.baseUrl})
     this.$el.html(this.template())
     this.$el.append(style)
-    this.$playButton = this.$el.find('.poster-icon')
-    this.$playWrapper = this.$el.find('.play-wrapper')
-    if(this.options.poster !== undefined) {
-      var imgEl = $('<img data-poster class="poster-background"></img>');
-      imgEl.attr('src', this.options.poster);
-      this.$el.prepend(imgEl);
+    if (this.options.poster) {
+      this.$el.css({'background-image': 'url(' + this.options.poster + ')'})
     }
     this.container.$el.append(this.el)
-    if (!!this.options.hidePlayButton) {
-      this.hidePlayButton()
+    this.$playWrapper = this.$el.find('.play-wrapper')
+    this.$playWrapper.append(playIcon)
+    this.$playButton = this.$playWrapper.find('svg')
+    this.$playButton.addClass('poster-icon')
+    this.$playButton.attr('data-poster', '')
+
+    var buttonsColor = this.options.mediacontrol && this.options.mediacontrol.buttons
+    if (buttonsColor) {
+      this.$el.find('svg path').css('fill', buttonsColor)
     }
-    process.nextTick(() => this.updateSize())
+
+    if (this.options.mediacontrol && this.options.mediacontrol.buttons) {
+      var buttonsColor = this.options.mediacontrol.buttons;
+      this.$playButton.css('color', buttonsColor);
+    }
+    this.update()
     return this
   }
 }
-
-module.exports = PosterPlugin

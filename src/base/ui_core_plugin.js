@@ -1,6 +1,7 @@
-var UIObject = require('ui_object')
+import {extend} from './utils'
+import UIObject from './ui_object'
 
-class UICorePlugin extends UIObject {
+export default class UICorePlugin extends UIObject {
   constructor(core) {
     super(core)
     this.core = core
@@ -14,9 +15,11 @@ class UICorePlugin extends UIObject {
   getExternalInterface() { return {} }
 
   enable() {
-    this.bindEvents()
-    this.$el.show()
-    this.enabled = true
+    if (!this.enabled) {
+      this.bindEvents()
+      this.$el.show()
+      this.enabled = true
+    }
   }
 
   disable() {
@@ -30,11 +33,12 @@ class UICorePlugin extends UIObject {
   }
 
   render() {
-    this.$el.html(this.template())
-    this.$el.append(this.styler.getStyleFor(this.name))
-    this.core.$el.append(this.el)
     return this
   }
 }
 
-module.exports = UICorePlugin
+UICorePlugin.extend = function(properties) {
+  return extend(UICorePlugin, properties)
+}
+
+UICorePlugin.type = 'core'
